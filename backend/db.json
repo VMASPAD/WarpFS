@@ -1,0 +1,19 @@
+{
+  "accounts": [
+    {
+      "id": "b5faed8c-7163-4a86-9054-1009f28f6d70",
+      "user": "admin",
+      "pass": "pass"
+    },
+    {
+      "id": "13f47037-3128-4927-b259-baa62b6fbae0",
+      "user": "test",
+      "pass": "test"
+    },
+    {
+      "id": "9d264d51-fd1d-44ed-8dc1-d84343c47d1e",
+      "user": "test1",
+      "pass": "test1"
+    }
+  ]
+}
