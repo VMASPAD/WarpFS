@@ -800,8 +800,48 @@ async function cleanupTempDirectory() {
         // Check if temp directory exists
         try {
             await fs.access(tempDir);
-            await fs.rm(tempDir, { recursive: true, force: true });
-            console.log('Temp directory cleaned up successfully');
+            
+            // Get list of active session directories to avoid deleting them
+            const activeSessions = Array.from(chunkSessions.keys());
+            console.log('Active chunk sessions:', activeSessions);
+            
+            // Read temp directory contents
+            const tempContents = await fs.readdir(tempDir);
+            
+            for (const item of tempContents) {
+                const itemPath = path.join(tempDir, item);
+                const stats = await fs.stat(itemPath);
+                
+                if (stats.isDirectory()) {
+                    // Check if this is an active session directory
+                    if (activeSessions.includes(item)) {
+                        console.log(`Skipping active session directory: ${item}`);
+                        continue;
+                    }
+                    
+                    // Check if this is the chunks directory used by multer
+                    if (item === 'chunks') {
+                        // Only clean chunks directory if no active sessions
+                        if (activeSessions.length === 0) {
+                            console.log('Cleaning chunks directory (no active sessions)');
+                            await fs.rm(itemPath, { recursive: true, force: true });
+                        } else {
+                            console.log('Skipping chunks directory (active sessions present)');
+                        }
+                        continue;
+                    }
+                    
+                    // Remove other directories (likely orphaned session directories)
+                    console.log(`Removing orphaned directory: ${item}`);
+                    await fs.rm(itemPath, { recursive: true, force: true });
+                } else {
+                    // Remove orphaned files
+                    console.log(`Removing orphaned file: ${item}`);
+                    await fs.unlink(itemPath);
+                }
+            }
+            
+            console.log('Temp directory cleanup completed');
         } catch (err) {
             if (err.code !== 'ENOENT') {
                 console.error('Error cleaning up temp directory:', err);
@@ -810,6 +850,33 @@ async function cleanupTempDirectory() {
         }
     } catch (err) {
         console.error('Error in cleanupTempDirectory:', err);
+    }
+}
+
+// Helper function to clean up after chunked upload completion (more aggressive)
+async function cleanupAfterChunkedUpload() {
+    try {
+        const tempDir = path.join(__dirname, 'temp');
+        console.log('Performing post-chunked-upload cleanup:', tempDir);
+        
+        // Get remaining active sessions
+        const activeSessions = Array.from(chunkSessions.keys());
+        console.log('Remaining active sessions after completion:', activeSessions);
+        
+        // If no more active sessions, we can clean the chunks directory
+        if (activeSessions.length === 0) {
+            const chunksDir = path.join(tempDir, 'chunks');
+            try {
+                await fs.rm(chunksDir, { recursive: true, force: true });
+                console.log('Chunks directory cleaned after upload completion');
+            } catch (err) {
+                if (err.code !== 'ENOENT') {
+                    console.error('Error cleaning chunks directory:', err);
+                }
+            }
+        }
+    } catch (err) {
+        console.error('Error in cleanupAfterChunkedUpload:', err);
     }
 }
 
@@ -1011,8 +1078,11 @@ app.post('/upload-chunked/finalize', authenticateUser, async (req, res) => {
             console.error('Error cleaning up temp directory:', cleanupErr);
         }
 
-        // Also clean up entire temp directory to remove any orphaned files
-        await cleanupTempDirectory();
+        // Clean up session from memory first
+        chunkSessions.delete(sessionId);
+
+        // Now perform cleanup of chunks directory if no more active sessions
+        await cleanupAfterChunkedUpload();
         
         // Generate file response
         const relativePath = path.relative(getUserDirectory(userId), finalPath).replace(/\\/g, '/');
@@ -1029,18 +1099,11 @@ app.post('/upload-chunked/finalize', authenticateUser, async (req, res) => {
             extension: path.extname(finalPath).slice(1),
             isPublic: false
         };
-        
-        // Clean up session
-        chunkSessions.delete(sessionId);
-        
-        console.log(`Chunked upload completed successfully: ${fileName} -> ${path.basename(finalPath)} (${Math.round(stats.size / 1024 / 1024)}MB)`);
-        
+
         res.json({ 
             message: 'File uploaded successfully via chunked upload',
             data: fileItem
-        });
-        
-    } catch (err) {
+        });    } catch (err) {
         console.error('Error finalizing chunked upload:', err);
         
         // Clean up on error - use the sessionId from the request body
@@ -1055,8 +1118,8 @@ app.post('/upload-chunked/finalize', authenticateUser, async (req, res) => {
             console.error('Error cleaning up after error:', cleanupErr);
         }
 
-        // Also clean up entire temp directory to remove any orphaned files
-        await cleanupTempDirectory();
+        // Clean up chunks directory if no more active sessions
+        await cleanupAfterChunkedUpload();
         
         res.status(500).json({ 
             message: 'Failed to finalize chunked upload',
@@ -1101,8 +1164,8 @@ app.delete('/upload-chunked/cancel/:sessionId', authenticateUser, async (req, re
             uploadProgress.delete(sessionId);
         }
 
-        // Clean up entire temp directory to remove any orphaned files
-        await cleanupTempDirectory();
+        // Clean up chunks directory if no more active sessions
+        await cleanupAfterChunkedUpload();
 
         res.json({ message: 'Upload session cancelled successfully' });
     } catch (err) {
@@ -1116,6 +1179,8 @@ setInterval(() => {
     const now = Date.now();
     const STALE_TIME = 30 * 60 * 1000; // 30 minutes
     
+    let removedSessions = 0;
+    
     for (const [sessionId, session] of chunkSessions) {
         if (now - session.lastUpdate > STALE_TIME) {
             console.log(`Cleaning up stale chunk session: ${sessionId}`);
@@ -1125,13 +1190,19 @@ setInterval(() => {
                 .catch(err => console.error('Error cleaning up stale session:', err));
             
             chunkSessions.delete(sessionId);
+            removedSessions++;
         }
     }
 
-    // Also perform a general temp directory cleanup
-    cleanupTempDirectory().catch(err => 
-        console.error('Error in periodic temp cleanup:', err)
-    );
+    // Only perform general cleanup if we removed sessions or there are no active sessions
+    if (removedSessions > 0 || chunkSessions.size === 0) {
+        console.log(`Performing periodic cleanup (removed ${removedSessions} stale sessions)`);
+        cleanupTempDirectory().catch(err => 
+            console.error('Error in periodic temp cleanup:', err)
+        );
+    } else {
+        console.log(`Periodic check: ${chunkSessions.size} active sessions, skipping cleanup`);
+    }
 }, 10 * 60 * 1000); // Check every 10 minutes
 
 app.post('/upload', authenticateUser, upload.array('files'), async (req, res) => {
@@ -1249,8 +1320,12 @@ app.post('/upload', authenticateUser, upload.array('files'), async (req, res) =>
             });
         }
 
-        // Clean up any temporary files from temp directory
-        await cleanupTempDirectory();
+        // Only clean temp directory if no active chunk sessions
+        if (chunkSessions.size === 0) {
+            await cleanupTempDirectory();
+        } else {
+            console.log('Skipping temp cleanup - active chunk sessions present');
+        }
 
         res.status(201).json({ 
             message: `${uploadedFiles.length} file(s) uploaded successfully`,
@@ -1318,8 +1393,12 @@ app.post('/upload-folder', authenticateUser, upload.array('files'), async (req, 
             uploadedFiles.push(fileItem);
         }
 
-        // Clean up any temporary files from temp directory
-        await cleanupTempDirectory();
+        // Only clean temp directory if no active chunk sessions
+        if (chunkSessions.size === 0) {
+            await cleanupTempDirectory();
+        } else {
+            console.log('Skipping temp cleanup - active chunk sessions present');
+        }
         
         res.status(201).json({ 
             message: `Folder uploaded successfully with ${uploadedFiles.length} file(s)`,
