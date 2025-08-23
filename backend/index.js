@@ -1464,13 +1464,145 @@ app.delete('/files', authenticateUser, async (req, res) => {
 app.put('/files/move', authenticateUser, async (req, res) => {
     try {
         const { ids, destinationPath } = req.body;
+        const { id: userId } = req.userAuth;
         
         if (!Array.isArray(ids) || !destinationPath) {
             return res.status(400).json({ message: 'Missing ids or destinationPath' });
         }
         
-        // Implementation for moving files would go here
-        res.status(200).json({ message: 'Files moved successfully' });
+        console.log(`Moving files - IDs: ${ids}, Destination: ${destinationPath}, User: ${userId}`);
+        
+        const userDir = getUserDirectory(userId);
+        const targetDir = path.join(userDir, destinationPath.replace(/^\/+/, ''));
+        
+        // Security check
+        if (!targetDir.startsWith(userDir)) {
+            return res.status(403).json({ message: 'Access denied to destination path' });
+        }
+        
+        // Ensure destination directory exists
+        await ensureDir(targetDir);
+        
+        const movedFiles = [];
+        const errors = [];
+        
+        for (const fileId of ids) {
+            try {
+                console.log(`Processing move for file ID: ${fileId}`);
+                
+                // Find the source file path
+                const sourceRelativePath = await findFilePathById(userDir, fileId);
+                if (!sourceRelativePath) {
+                    console.log(`File not found for ID: ${fileId}`);
+                    errors.push({ id: fileId, error: 'File not found' });
+                    continue;
+                }
+                
+                const sourceFullPath = path.join(userDir, sourceRelativePath);
+                const fileName = path.basename(sourceFullPath);
+                let targetFullPath = path.join(targetDir, fileName);
+                
+                console.log(`Moving: ${sourceFullPath} -> ${targetFullPath}`);
+                
+                // Check if source file exists
+                try {
+                    await fs.access(sourceFullPath);
+                } catch {
+                    console.log(`Source file not accessible: ${sourceFullPath}`);
+                    errors.push({ id: fileId, error: 'Source file not accessible' });
+                    continue;
+                }
+                
+                // Handle filename conflicts in destination
+                let counter = 1;
+                let finalTargetPath = targetFullPath;
+                
+                while (true) {
+                    try {
+                        await fs.access(finalTargetPath);
+                        // File exists, create a new name
+                        const ext = path.extname(fileName);
+                        const nameWithoutExt = path.basename(fileName, ext);
+                        const newName = `${nameWithoutExt} (${counter})${ext}`;
+                        finalTargetPath = path.join(targetDir, newName);
+                        counter++;
+                    } catch {
+                        // File doesn't exist, we can use this path
+                        break;
+                    }
+                }
+                
+                // Perform the move operation
+                await fs.rename(sourceFullPath, finalTargetPath);
+                console.log(`Successfully moved: ${sourceFullPath} -> ${finalTargetPath}`);
+                
+                // Get stats for the moved file
+                const stats = await fs.stat(finalTargetPath);
+                const newRelativePath = path.relative(userDir, finalTargetPath).replace(/\\/g, '/');
+                
+                // Generate new file item
+                const movedFileItem = createFileItemWithStats(
+                    path.basename(finalTargetPath), 
+                    finalTargetPath, 
+                    stats, 
+                    userDir, 
+                    false // Reset public status when moving
+                );
+                
+                // Update public files registry if the file was public
+                try {
+                    const publicMetadataPath = path.join(__dirname, 'public-files.json');
+                    let publicFiles = { files: [] };
+                    
+                    try {
+                        publicFiles = await readJsonFile(publicMetadataPath);
+                    } catch (err) {
+                        if (err.code !== 'ENOENT') {
+                            console.error('Error reading public files metadata:', err);
+                        }
+                    }
+                    
+                    if (Array.isArray(publicFiles.files)) {
+                        // Remove old entry if exists
+                        const oldIndex = publicFiles.files.findIndex(f => f.id === fileId);
+                        if (oldIndex !== -1) {
+                            console.log(`Updating public file registry for moved file: ${fileId}`);
+                            // Update the public file entry with new path
+                            publicFiles.files[oldIndex] = {
+                                ...publicFiles.files[oldIndex],
+                                ...movedFileItem,
+                                fullPath: finalTargetPath
+                            };
+                            await writeJsonFile(publicMetadataPath, publicFiles);
+                        }
+                    }
+                } catch (publicErr) {
+                    console.error('Error updating public files registry after move:', publicErr);
+                    // Don't fail the move operation for this
+                }
+                
+                movedFiles.push(movedFileItem);
+                
+            } catch (fileErr) {
+                console.error(`Error moving file ${fileId}:`, fileErr);
+                errors.push({ 
+                    id: fileId, 
+                    error: fileErr.message || 'Unknown error during move operation' 
+                });
+            }
+        }
+        
+        const response = {
+            message: `${movedFiles.length} file(s) moved successfully`,
+            movedFiles,
+            errors: errors.length > 0 ? errors : undefined
+        };
+        
+        if (errors.length > 0) {
+            console.log(`Move completed with ${errors.length} errors:`, errors);
+        }
+        
+        res.status(200).json(response);
     } catch (err) {
         console.error('Error moving files:', err);
         res.status(500).json({ message: 'Failed to move files' });
