@@ -367,6 +367,60 @@ async function findFilePathById(userDir, fileId) {
     return result;
 }
 
+// Helper function to find file path by ID with fallback mechanisms
+async function findFilePathByIdRobust(userDir, fileId, fileName = null) {
+    console.log(`Robust search for file ID: ${fileId}, fileName: ${fileName} in directory: ${userDir}`);
+    
+    // First try the standard search
+    let result = await findFilePathById(userDir, fileId);
+    if (result) {
+        console.log(`Found file using standard search: ${result}`);
+        return result;
+    }
+    
+    // If standard search fails and we have a fileName, try to find by name
+    if (fileName) {
+        console.log(`Standard search failed, trying to find by filename: ${fileName}`);
+        
+        async function searchByName(currentPath) {
+            try {
+                const items = await fs.readdir(currentPath, { withFileTypes: true });
+                
+                for (const item of items) {
+                    if (item.name.startsWith('.')) continue; // Skip hidden files
+                    
+                    const itemPath = path.join(currentPath, item.name);
+                    
+                    // Check if this is the file we're looking for by name
+                    if (item.name === fileName) {
+                        const relativePath = path.relative(userDir, itemPath).replace(/\\/g, '/');
+                        console.log(`Found file by name: ${relativePath}`);
+                        return relativePath;
+                    }
+                    
+                    // If it's a directory, search recursively
+                    if (item.isDirectory()) {
+                        const found = await searchByName(itemPath);
+                        if (found) return found;
+                    }
+                }
+            } catch (error) {
+                console.error(`Error searching directory by name ${currentPath}:`, error);
+            }
+            return null;
+        }
+        
+        result = await searchByName(userDir);
+        if (result) {
+            console.log(`Found file using name-based search: ${result}`);
+            return result;
+        }
+    }
+    
+    console.log(`File not found with any search method`);
+    return null;
+}
+
 // Helper function to create file item with consistent ID generation
 function createFileItemWithStats(name, filePath, stats, userDir, isPublic = false) {
     const extension = path.extname(name).slice(1);
@@ -1424,8 +1478,8 @@ app.delete('/files', authenticateUser, async (req, res) => {
         
         for (const fileId of ids) {
             console.log(`Attempting to delete file with ID: ${fileId}`);
-            // Find file by ID in the directory structure
-            const filePath = await findFilePathById(userDir, fileId);
+            // Find file by ID in the directory structure using robust search
+            const filePath = await findFilePathByIdRobust(userDir, fileId, null);
             console.log(`Found file path for ID ${fileId}: ${filePath}`);
             
             if (filePath) {
@@ -1463,7 +1517,7 @@ app.delete('/files', authenticateUser, async (req, res) => {
 
 app.put('/files/move', authenticateUser, async (req, res) => {
     try {
-        const { ids, destinationPath } = req.body;
+        const { ids, destinationPath, fileMetadata = {} } = req.body;
         const { id: userId } = req.userAuth;
         
         if (!Array.isArray(ids) || !destinationPath) {
@@ -1471,6 +1525,7 @@ app.put('/files/move', authenticateUser, async (req, res) => {
         }
         
         console.log(`Moving files - IDs: ${ids}, Destination: ${destinationPath}, User: ${userId}`);
+        console.log('File metadata received:', fileMetadata);
         
         const userDir = getUserDirectory(userId);
         const targetDir = path.join(userDir, destinationPath.replace(/^\/+/, ''));
@@ -1490,8 +1545,14 @@ app.put('/files/move', authenticateUser, async (req, res) => {
             try {
                 console.log(`Processing move for file ID: ${fileId}`);
                 
-                // Find the source file path
-                const sourceRelativePath = await findFilePathById(userDir, fileId);
+                // Get file metadata if provided
+                const metadata = fileMetadata[fileId];
+                const fileName = metadata?.name;
+                
+                console.log(`Using metadata for ${fileId}:`, metadata);
+                
+                // Find the source file path using robust search
+                const sourceRelativePath = await findFilePathByIdRobust(userDir, fileId, fileName);
                 if (!sourceRelativePath) {
                     console.log(`File not found for ID: ${fileId}`);
                     errors.push({ id: fileId, error: 'File not found' });
@@ -1499,8 +1560,8 @@ app.put('/files/move', authenticateUser, async (req, res) => {
                 }
                 
                 const sourceFullPath = path.join(userDir, sourceRelativePath);
-                const fileName = path.basename(sourceFullPath);
-                let targetFullPath = path.join(targetDir, fileName);
+                const actualFileName = path.basename(sourceFullPath);
+                let targetFullPath = path.join(targetDir, actualFileName);
                 
                 console.log(`Moving: ${sourceFullPath} -> ${targetFullPath}`);
                 
@@ -1521,8 +1582,8 @@ app.put('/files/move', authenticateUser, async (req, res) => {
                     try {
                         await fs.access(finalTargetPath);
                         // File exists, create a new name
-                        const ext = path.extname(fileName);
-                        const nameWithoutExt = path.basename(fileName, ext);
+                        const ext = path.extname(actualFileName);
+                        const nameWithoutExt = path.basename(actualFileName, ext);
                         const newName = `${nameWithoutExt} (${counter})${ext}`;
                         finalTargetPath = path.join(targetDir, newName);
                         counter++;
@@ -1548,6 +1609,8 @@ app.put('/files/move', authenticateUser, async (req, res) => {
                     userDir, 
                     false // Reset public status when moving
                 );
+                
+                console.log(`Generated new file item:`, movedFileItem);
                 
                 // Update public files registry if the file was public
                 try {
@@ -1628,7 +1691,7 @@ app.put('/files/:id/rename', authenticateUser, async (req, res) => {
         }
         
         const userDir = getUserDirectory(userId);
-        const filePath = await findFilePathById(userDir, id);
+        const filePath = await findFilePathByIdRobust(userDir, id, null);
         
         console.log(`Found file path: ${filePath}`);
         
@@ -1724,7 +1787,7 @@ app.put('/files/:id/public', authenticateUser, async (req, res) => {
         }
         
         const userDir = getUserDirectory(userId);
-        const filePath = await findFilePathById(userDir, id);
+        const filePath = await findFilePathByIdRobust(userDir, id, null);
         
         if (!filePath) {
             return res.status(404).json({ message: 'File not found' });
