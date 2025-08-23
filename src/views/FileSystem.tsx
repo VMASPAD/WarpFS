@@ -400,7 +400,7 @@ function FileSystem({ }: FileSystemProps) {
                   <TableCaption>
                     {filteredItems.length === 0
                       ? 'No files found'
-                      : `${filteredItems.length} item${filteredItems.length !== 1 ? 's' : ''} in current directory (reload to see changes)`
+                      : `${filteredItems.length} item${filteredItems.length !== 1 ? 's' : ''} in current directory (reload to see changes and select to move)`
                     }
                   </TableCaption>
                   <TableHeader>

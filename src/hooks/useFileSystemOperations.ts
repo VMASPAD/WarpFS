@@ -112,14 +112,31 @@ export function useFileSystemOperations() {
     dispatch({ type: 'SET_ERROR', payload: null });
 
     try {
-      await fileSystemAPI.moveFiles(state.selectedItems, destinationPath);
+      // Gather metadata for selected files
+      const fileMetadata: Record<string, { name: string; type: string; path: string }> = {};
+      state.selectedItems.forEach(id => {
+        const item = state.items.find(item => item.id === id);
+        if (item) {
+          fileMetadata[id] = {
+            name: item.name,
+            type: item.type,
+            path: item.path
+          };
+        }
+      });
+
+      console.log('Moving files with metadata:', { selectedItems: state.selectedItems, fileMetadata, destinationPath });
+      
+      await fileSystemAPI.moveFiles(state.selectedItems, destinationPath, fileMetadata);
+      console.log("move")
       // Reload files to reflect the changes
       await loadFiles(state.currentPath);
       dispatch({ type: 'CLEAR_SELECTION' });
     } catch (error) {
+      console.error('Error moving files:', error);
       dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : 'Failed to move files' });
     }
-  }, [dispatch, state.selectedItems, state.currentPath, loadFiles]);
+  }, [dispatch, state.selectedItems, state.currentPath, state.items, loadFiles]);
 
   const renameFile = useCallback(async (id: string, newName: string) => {
     dispatch({ type: 'SET_LOADING', payload: true });

@@ -169,13 +169,14 @@ class FileSystemAPI {
     console.log('Delete response:', result);
   }
 
-  async moveFiles(ids: string[], destinationPath: string): Promise<void> {
+  async moveFiles(ids: string[], destinationPath: string, fileMetadata?: Record<string, { name: string; type: string; path: string }>): Promise<void> {
     const response = await fetch(`${API_BASE_URL}/files/move`, {
       method: 'PUT',
       headers: this.getAuthHeaders(),
       body: JSON.stringify({
         ids,
         destinationPath,
+        fileMetadata,
       }),
     });
 
