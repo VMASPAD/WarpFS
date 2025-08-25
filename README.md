@@ -142,6 +142,124 @@ The frontend will run on `http://localhost:5173`
 
 3. Open your browser and navigate to `http://localhost:5173`
 
+# Deploy (Docker and Coolify)
+
+```bash
+# ---------- Base image with Node and Git ----------
+FROM node:20-alpine AS base
+
+# Install Git and utilities
+RUN apk add --no-cache git bash curl
+
+# Build args (override with --build-arg)
+ARG REPO_URL="https://github.com/VMASPAD/WarpFS"
+ARG REPO_BRANCH="main"
+
+# App directory
+ENV APP_DIR=/app
+WORKDIR ${APP_DIR}
+
+# Clone repository (specific branch if needed)
+RUN git clone --depth=1 --branch "${REPO_BRANCH}" "${REPO_URL}" ./
+
+# ---------- Install dependencies ----------
+RUN if [ -f package.json ]; then \
+      corepack enable && corepack prepare pnpm@latest --activate || true; \
+      if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; \
+      elif [ -f package-lock.json ]; then npm ci; \
+      elif [ -f yarn.lock ]; then yarn install --frozen-lockfile; \
+      else npm install; fi; \
+    fi
+
+# Optional second service folder (e.g. "backend")
+ARG SECOND_DIR="backend"
+
+RUN if [ -d "${SECOND_DIR}" ] && [ -f "${SECOND_DIR}/package.json" ]; then \
+      cd "${SECOND_DIR}" && \
+      if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; \
+      elif [ -f package-lock.json ]; then npm ci; \
+      elif [ -f yarn.lock ]; then yarn install --frozen-lockfile; \
+      else npm install; fi; \
+    fi
+
+# ---------- Runtime ----------
+ENV FIRST_CMD="npm run dev" \
+    SECOND_CMD="npm run serve" \
+    SECOND_DIR="${SECOND_DIR}" \
+    HOST="0.0.0.0" \
+    PORT="6043" \
+    SECOND_PORT="9876"
+
+EXPOSE 6043 9876
+
+# Startup script
+RUN printf '%s\n' \
+'#!/usr/bin/env bash' \
+'set -euo pipefail' \
+'' \
+'cd "${APP_DIR}"' \
+'echo "[start] Running: ${FIRST_CMD}"' \
+'( export HOST="${HOST}" PORT="${PORT}"; eval "${FIRST_CMD}" ) & PID1=$!' \
+'' \
+'if [ -d "${SECOND_DIR}" ]; then' \
+'  cd "${APP_DIR}/${SECOND_DIR}"' \
+'  echo "[start] Running: ${SECOND_CMD}"' \
+'  ( export HOST="${HOST}" PORT="${SECOND_PORT}"; eval "${SECOND_CMD}" ) & PID2=$!' \
+'else' \
+'  PID2=""' \
+'fi' \
+'' \
+'trap "kill -TERM ${PID1} ${PID2} 2>/dev/null || true; wait || true" SIGINT SIGTERM' \
+'' \
+'if [ -n "${PID2:-}" ]; then wait -n ${PID1} ${PID2}; else wait ${PID1}; fi' \
+> /usr/local/bin/start.sh && chmod +x /usr/local/bin/start.sh
+
+CMD ["/usr/local/bin/start.sh"]
+```
+
+## Domain assignment
+
+```traefik
+traefik.enable=true
+
+# Middlewares globales
+traefik.http.middlewares.gzip.compress=true
+traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
+
+# ---------- FRONTEND ----------
+traefik.http.routers.http-frontend.entryPoints=http
+traefik.http.routers.http-frontend.rule=Host(`domain.example.com`) && PathPrefix(`/`)
+traefik.http.routers.http-frontend.middlewares=redirect-to-https
+traefik.http.routers.http-frontend.service=frontend-http-svc
+
+traefik.http.routers.https-frontend.entryPoints=https
+traefik.http.routers.https-frontend.rule=Host(`domain.example.com`) && PathPrefix(`/`)
+traefik.http.routers.https-frontend.tls=true
+traefik.http.routers.https-frontend.tls.certresolver=letsencrypt
+traefik.http.routers.https-frontend.middlewares=gzip
+traefik.http.routers.https-frontend.service=frontend-https-svc
+
+traefik.http.services.frontend-http-svc.loadbalancer.server.port=6043
+traefik.http.services.frontend-https-svc.loadbalancer.server.port=6043
+
+# ---------- BACKEND (hidden under /api/* of the same host) ----------
+# Router backend bajo el mismo dominio del frontend
+traefik.http.routers.https-backend.entryPoints=https
+traefik.http.routers.https-backend.rule=Host(`domain.example.com`) && PathPrefix(`/api`)
+traefik.http.routers.https-backend.tls=true
+traefik.http.routers.https-backend.tls.certresolver=letsencrypt
+
+# Middlewares
+traefik.http.middlewares.backend-strip.stripprefix.prefixes=/api
+traefik.http.middlewares.backend-gzip.compress=true
+traefik.http.routers.https-backend.middlewares=backend-strip,backend-gzip
+
+# Service del backend
+traefik.http.services.backend-svc.loadbalancer.server.port=9876
+traefik.http.routers.https-backend.service=backend-svc
+
+```
+
 ## Usage
 
 ### First Time Setup
