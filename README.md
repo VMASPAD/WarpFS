@@ -260,6 +260,12 @@ traefik.http.routers.https-backend.service=backend-svc
 
 ```
 
+### how to update
+```bash
+cd /path/to/your/cloned/repo
+git pull
+```
+
 ## Usage
 
 ### First Time Setup
