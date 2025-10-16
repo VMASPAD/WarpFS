@@ -10,16 +10,31 @@ export function useFileSystemOperations() {
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
 
+    // Show loading toast for long operations
+    const loadingToast = toast.loading('Loading files...', {
+      description: 'Please wait, this may take a moment if the network is slow'
+    });
+
     try {
       const files = await fileSystemAPI.getFiles(path);
       dispatch({ type: 'SET_ITEMS', payload: files });
       dispatch({ type: 'SET_CURRENT_PATH', payload: path });
+      toast.dismiss(loadingToast);
     } catch (error) {
+      toast.dismiss(loadingToast);
       const errorMessage = error instanceof Error ? error.message : 'Failed to load files';
       dispatch({ type: 'SET_ERROR', payload: errorMessage });
-      toast.error('Failed to load files', {
-        description: errorMessage
-      });
+      
+      if (errorMessage.includes('timeout')) {
+        toast.error('Operation timed out', {
+          description: 'The operation may have completed. Try refreshing to see the latest files.',
+          duration: 5000
+        });
+      } else {
+        toast.error('Failed to load files', {
+          description: errorMessage
+        });
+      }
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
@@ -29,18 +44,34 @@ export function useFileSystemOperations() {
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
 
+    const loadingToast = toast.loading('Creating file...', {
+      description: 'Please wait...'
+    });
+
     try {
       const newFile = await fileSystemAPI.createFile(name, state.currentPath, content);
       dispatch({ type: 'ADD_ITEM', payload: newFile });
+      toast.dismiss(loadingToast);
       toast.success('File created successfully', {
         description: `Created "${name}" in ${state.currentPath}`
       });
     } catch (error) {
+      toast.dismiss(loadingToast);
       const errorMessage = error instanceof Error ? error.message : 'Failed to create file';
       dispatch({ type: 'SET_ERROR', payload: errorMessage });
-      toast.error('Failed to create file', {
-        description: errorMessage
-      });
+      
+      if (errorMessage.includes('timeout')) {
+        toast.error('Operation timed out', {
+          description: 'The file may have been created. Refresh to verify.',
+          duration: 5000
+        });
+        // Reload files to check if operation completed
+        await loadFiles(state.currentPath);
+      } else {
+        toast.error('Failed to create file', {
+          description: errorMessage
+        });
+      }
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
@@ -50,18 +81,34 @@ export function useFileSystemOperations() {
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
 
+    const loadingToast = toast.loading('Creating folder...', {
+      description: 'Please wait...'
+    });
+
     try {
       const newFolder = await fileSystemAPI.createFolder(name, state.currentPath);
       dispatch({ type: 'ADD_ITEM', payload: newFolder });
+      toast.dismiss(loadingToast);
       toast.success('Folder created successfully', {
         description: `Created "${name}" in ${state.currentPath}`
       });
     } catch (error) {
+      toast.dismiss(loadingToast);
       const errorMessage = error instanceof Error ? error.message : 'Failed to create folder';
       dispatch({ type: 'SET_ERROR', payload: errorMessage });
-      toast.error('Failed to create folder', {
-        description: errorMessage
-      });
+      
+      if (errorMessage.includes('timeout')) {
+        toast.error('Operation timed out', {
+          description: 'The folder may have been created. Refresh to verify.',
+          duration: 5000
+        });
+        // Reload files to check if operation completed
+        await loadFiles(state.currentPath);
+      } else {
+        toast.error('Failed to create folder', {
+          description: errorMessage
+        });
+      }
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
@@ -72,6 +119,11 @@ export function useFileSystemOperations() {
 
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
+
+    const itemCount = state.selectedItems.length;
+    const loadingToast = toast.loading(`Deleting ${itemCount} item${itemCount > 1 ? 's' : ''}...`, {
+      description: 'Please wait, this may take a moment...'
+    });
 
     try {
       console.log('Deleting files with IDs:', state.selectedItems);
@@ -87,17 +139,27 @@ export function useFileSystemOperations() {
       await loadFiles(state.currentPath);
       console.log('Files deleted and list refreshed');
       
+      toast.dismiss(loadingToast);
       toast.success('Files deleted successfully', {
-        description: `Deleted ${state.selectedItems.length} item${state.selectedItems.length > 1 ? 's' : ''}`
+        description: `Deleted ${itemCount} item${itemCount > 1 ? 's' : ''}`
       });
       
     } catch (error) {
       console.error('Error deleting files:', error);
+      toast.dismiss(loadingToast);
       const errorMessage = error instanceof Error ? error.message : 'Failed to delete files';
       dispatch({ type: 'SET_ERROR', payload: errorMessage });
-      toast.error('Failed to delete files', {
-        description: errorMessage
-      });
+      
+      if (errorMessage.includes('timeout')) {
+        toast.error('Operation timed out', {
+          description: 'The files may have been deleted. Refreshing to verify...',
+          duration: 5000
+        });
+      } else {
+        toast.error('Failed to delete files', {
+          description: errorMessage
+        });
+      }
       // Reload files even on error to ensure UI consistency
       await loadFiles(state.currentPath);
     } finally {
@@ -110,6 +172,11 @@ export function useFileSystemOperations() {
 
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
+
+    const itemCount = state.selectedItems.length;
+    const loadingToast = toast.loading(`Moving ${itemCount} item${itemCount > 1 ? 's' : ''}...`, {
+      description: 'Please wait, this may take a moment...'
+    });
 
     try {
       // Gather metadata for selected files
@@ -132,9 +199,30 @@ export function useFileSystemOperations() {
       // Reload files to reflect the changes
       await loadFiles(state.currentPath);
       dispatch({ type: 'CLEAR_SELECTION' });
+      
+      toast.dismiss(loadingToast);
+      toast.success('Files moved successfully', {
+        description: `Moved ${itemCount} item${itemCount > 1 ? 's' : ''} to ${destinationPath}`
+      });
     } catch (error) {
       console.error('Error moving files:', error);
-      dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : 'Failed to move files' });
+      toast.dismiss(loadingToast);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to move files';
+      dispatch({ type: 'SET_ERROR', payload: errorMessage });
+      
+      if (errorMessage.includes('timeout')) {
+        toast.error('Operation timed out', {
+          description: 'The files may have been moved. Refreshing to verify...',
+          duration: 5000
+        });
+        await loadFiles(state.currentPath);
+      } else {
+        toast.error('Failed to move files', {
+          description: errorMessage
+        });
+      }
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
     }
   }, [dispatch, state.selectedItems, state.currentPath, state.items, loadFiles]);
 
@@ -142,42 +230,73 @@ export function useFileSystemOperations() {
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
 
+    const loadingToast = toast.loading('Renaming file...', {
+      description: 'Please wait...'
+    });
+
     try {
       const updatedFile = await fileSystemAPI.renameFile(id, newName);
       dispatch({ type: 'UPDATE_ITEM', payload: updatedFile });
+      toast.dismiss(loadingToast);
       toast.success('File renamed successfully', {
         description: `Renamed to "${newName}"`
       });
     } catch (error) {
+      toast.dismiss(loadingToast);
       const errorMessage = error instanceof Error ? error.message : 'Failed to rename file';
       dispatch({ type: 'SET_ERROR', payload: errorMessage });
-      toast.error('Failed to rename file', {
-        description: errorMessage
-      });
+      
+      if (errorMessage.includes('timeout')) {
+        toast.error('Operation timed out', {
+          description: 'The file may have been renamed. Refresh to verify.',
+          duration: 5000
+        });
+        await loadFiles(state.currentPath);
+      } else {
+        toast.error('Failed to rename file', {
+          description: errorMessage
+        });
+      }
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
-  }, [dispatch]);
+  }, [dispatch, state.currentPath, loadFiles]);
 
   const toggleFilePublic = useCallback(async (id: string, isPublic: boolean) => {
     console.log('Hook toggleFilePublic called with:', id, isPublic);
+    
+    const loadingToast = toast.loading(`Making file ${isPublic ? 'public' : 'private'}...`, {
+      description: 'Please wait...'
+    });
+    
     try {
       const updatedFile = await fileSystemAPI.toggleFilePublic(id, isPublic);
       console.log('Hook toggleFilePublic result:', updatedFile);
       dispatch({ type: 'UPDATE_ITEM', payload: updatedFile });
+      toast.dismiss(loadingToast);
       toast.success(`File ${isPublic ? 'made public' : 'made private'}`, {
         description: isPublic ? 'File can now be accessed without credentials' : 'File is now private'
       });
       return updatedFile;
     } catch (error) {
       console.error('Hook toggleFilePublic error:', error);
+      toast.dismiss(loadingToast);
       const errorMessage = error instanceof Error ? error.message : 'Failed to update file';
-      toast.error('Failed to update file', {
-        description: errorMessage
-      });
+      
+      if (errorMessage.includes('timeout')) {
+        toast.error('Operation timed out', {
+          description: 'The file status may have been updated. Refresh to verify.',
+          duration: 5000
+        });
+        await loadFiles(state.currentPath);
+      } else {
+        toast.error('Failed to update file', {
+          description: errorMessage
+        });
+      }
       throw error;
     }
-  }, [dispatch]);
+  }, [dispatch, state.currentPath, loadFiles]);
 
   const navigateToFolder = useCallback(async (folderPath: string) => {
     await loadFiles(folderPath);
@@ -209,6 +328,10 @@ export function useFileSystemOperations() {
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
 
+    const loadingToast = toast.loading('Logging in...', {
+      description: 'Please wait, verifying credentials...'
+    });
+
     try {
       const response = await fileSystemAPI.loginUser({ user, pass });
       // Get the user ID from the database (would be returned in a real API)
@@ -216,15 +339,25 @@ export function useFileSystemOperations() {
       fileSystemAPI.setUserCredentials({ user, pass }, userId);
       dispatch({ type: 'SET_USER', payload: { id: userId, user } });
       await loadFiles('/');
+      toast.dismiss(loadingToast);
       toast.success('Logged in successfully', {
         description: `Welcome back, ${user}!`
       });
     } catch (error) {
+      toast.dismiss(loadingToast);
       const errorMessage = error instanceof Error ? error.message : 'Login failed';
       dispatch({ type: 'SET_ERROR', payload: errorMessage });
-      toast.error('Login failed', {
-        description: errorMessage
-      });
+      
+      if (errorMessage.includes('timeout')) {
+        toast.error('Login timed out', {
+          description: 'Please check your network connection and try again.',
+          duration: 5000
+        });
+      } else {
+        toast.error('Login failed', {
+          description: errorMessage
+        });
+      }
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
@@ -234,19 +367,33 @@ export function useFileSystemOperations() {
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
 
+    const loadingToast = toast.loading('Creating account...', {
+      description: 'Please wait, setting up your workspace...'
+    });
+
     try {
       await fileSystemAPI.createUser({ user, pass });
+      toast.dismiss(loadingToast);
       // Auto-login after creation
       await loginUser(user, pass);
       toast.success('Account created successfully', {
         description: `Welcome to WarpFS, ${user}!`
       });
     } catch (error) {
+      toast.dismiss(loadingToast);
       const errorMessage = error instanceof Error ? error.message : 'Failed to create user';
       dispatch({ type: 'SET_ERROR', payload: errorMessage });
-      toast.error('Failed to create account', {
-        description: errorMessage
-      });
+      
+      if (errorMessage.includes('timeout')) {
+        toast.error('Account creation timed out', {
+          description: 'Your account may have been created. Try logging in.',
+          duration: 5000
+        });
+      } else {
+        toast.error('Failed to create account', {
+          description: errorMessage
+        });
+      }
     }
   }, [dispatch, loginUser]);
 
