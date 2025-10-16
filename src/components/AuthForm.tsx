@@ -32,7 +32,7 @@ export function AuthForm() {
       <Card className="w-full max-w-md"> 
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold">WarpFS</CardTitle>
-          <CardDescription>Access your file system (Save your password)</CardDescription>
+          <CardDescription>Access your file system (v3.0.0)</CardDescription>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="login" className="w-full">
