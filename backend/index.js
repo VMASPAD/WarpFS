@@ -21,11 +21,16 @@ app.use(compression({
     }
 }));
 
-// Configure server for large file uploads
+// Configure server for large file uploads and network congestion
 app.use((req, res, next) => {
-    // Increase timeout for large file uploads (30 minutes)
-    req.setTimeout(30 * 60 * 10000);
-    res.setTimeout(30 * 60 * 10000);
+    // Increase timeout for large file uploads and slow networks (60 minutes)
+    req.setTimeout(60 * 60 * 1000); // 60 minutes
+    res.setTimeout(60 * 60 * 1000); // 60 minutes
+    
+    // Keep connection alive during long operations
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Keep-Alive', 'timeout=3600');
+    
     next();
 });
 
@@ -515,9 +520,20 @@ app.post('/createUser', async (req, res) => {
         const userDir = getUserDirectory(id);
         await ensureDir(userDir);
         
-        // Create metadata file for the user's root directory
+        // Create metadata file for the user's root directory with retry logic
         const metadataPath = path.join(userDir, '.metadata.json');
-        await writeJsonFile(metadataPath, { files: [] });
+        try {
+            await writeJsonFile(metadataPath, { files: [] });
+            console.log("Metadata file created at:", metadataPath);
+        } catch (metadataError) {
+            console.error("Error creating metadata file:", metadataError);
+            // Retry once after a short delay
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            await writeJsonFile(metadataPath, { files: [] });
+        }
+        
+        // Add a small delay before sending response to ensure all operations complete
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         console.log("User created successfully with directory:", userDir);
         res.status(201).json({ message: 'User created successfully', id });

@@ -64,162 +64,295 @@ class FileSystemAPI {
   }
 
   async createUser(userData: CreateUserData): Promise<ApiResponse> {
-    const response = await fetch(`${API_BASE_URL}/createUser`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(userData),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minutes timeout
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/createUser`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(userData),
+        signal: controller.signal,
+        keepalive: true,
+      });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timeout - operation may still be in progress');
+      }
+      throw error;
     }
-
-    return await response.json();
   }
 
   async loginUser(credentials: LoginCredentials): Promise<ApiResponse> {
-    const response = await fetch(`${API_BASE_URL}/logInUser`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(credentials),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minutes timeout
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/logInUser`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(credentials),
+        signal: controller.signal,
+        keepalive: true,
+      });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timeout - operation may still be in progress');
+      }
+      throw error;
     }
-
-    return await response.json();
   }
 
   async getFiles(path: string = '/'): Promise<FileItem[]> {
-    const response = await fetch(`${API_BASE_URL}/files?path=${encodeURIComponent(path)}`, {
-      method: 'GET',
-      headers: this.getAuthHeaders(),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minutes timeout
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/files?path=${encodeURIComponent(path)}`, {
+        method: 'GET',
+        headers: this.getAuthHeaders(),
+        signal: controller.signal,
+        keepalive: true,
+      });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      return result.data || [];
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timeout - operation may still be in progress');
+      }
+      throw error;
     }
-
-    const result = await response.json();
-    return result.data || [];
   }
 
   async createFile(name: string, path: string, content?: string): Promise<FileItem> {
-    const response = await fetch(`${API_BASE_URL}/files`, {
-      method: 'POST',
-      headers: this.getAuthHeaders(),
-      body: JSON.stringify({
-        name,
-        path,
-        type: 'file',
-        content: content || '',
-      }),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minutes timeout
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/files`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({
+          name,
+          path,
+          type: 'file',
+          content: content || '',
+        }),
+        signal: controller.signal,
+        keepalive: true,
+      });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      return result.data;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timeout - operation may still be in progress');
+      }
+      throw error;
     }
-
-    const result = await response.json();
-    return result.data;
   }
 
   async createFolder(name: string, path: string): Promise<FileItem> {
-    const response = await fetch(`${API_BASE_URL}/files`, {
-      method: 'POST',
-      headers: this.getAuthHeaders(),
-      body: JSON.stringify({
-        name,
-        path,
-        type: 'folder',
-      }),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minutes timeout
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/files`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({
+          name,
+          path,
+          type: 'folder',
+        }),
+        signal: controller.signal,
+        keepalive: true,
+      });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      return result.data;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timeout - operation may still be in progress');
+      }
+      throw error;
     }
-
-    const result = await response.json();
-    return result.data;
   }
 
   async deleteFiles(ids: string[]): Promise<void> {
     console.log('Sending delete request for IDs:', ids);
     
-    const response = await fetch(`${API_BASE_URL}/files`, {
-      method: 'DELETE',
-      headers: this.getAuthHeaders(),
-      body: JSON.stringify({ ids }),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minutes timeout
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/files`, {
+        method: 'DELETE',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({ ids }),
+        signal: controller.signal,
+        keepalive: true,
+      });
 
-    console.log('Delete response status:', response.status);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Delete request failed:', errorText);
-      throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+      clearTimeout(timeoutId);
+      console.log('Delete response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Delete request failed:', errorText);
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+      }
+      
+      const result = await response.json();
+      console.log('Delete response:', result);
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timeout - operation may still be in progress');
+      }
+      throw error;
     }
-    
-    const result = await response.json();
-    console.log('Delete response:', result);
   }
 
   async moveFiles(ids: string[], destinationPath: string, fileMetadata?: Record<string, { name: string; type: string; path: string }>): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/files/move`, {
-      method: 'PUT',
-      headers: this.getAuthHeaders(),
-      body: JSON.stringify({
-        ids,
-        destinationPath,
-        fileMetadata,
-      }),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minutes timeout
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/files/move`, {
+        method: 'PUT',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({
+          ids,
+          destinationPath,
+          fileMetadata,
+        }),
+        signal: controller.signal,
+        keepalive: true,
+      });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timeout - operation may still be in progress');
+      }
+      throw error;
     }
   }
 
   async renameFile(id: string, newName: string): Promise<FileItem> {
-    const response = await fetch(`${API_BASE_URL}/files/${id}/rename`, {
-      method: 'PUT',
-      headers: this.getAuthHeaders(),
-      body: JSON.stringify({ name: newName }),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minutes timeout
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/files/${id}/rename`, {
+        method: 'PUT',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({ name: newName }),
+        signal: controller.signal,
+        keepalive: true,
+      });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      return result.data;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timeout - operation may still be in progress');
+      }
+      throw error;
     }
-
-    const result = await response.json();
-    return result.data;
   }
 
   async toggleFilePublic(id: string, isPublic: boolean): Promise<FileItem> {
     console.log('API toggleFilePublic called with:', id, isPublic);
     
-    const response = await fetch(`${API_BASE_URL}/files/${id}/public`, {
-      method: 'PUT',
-      headers: this.getAuthHeaders(),
-      body: JSON.stringify({ isPublic }),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minutes timeout
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/files/${id}/public`, {
+        method: 'PUT',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({ isPublic }),
+        signal: controller.signal,
+        keepalive: true,
+      });
 
-    console.log('API toggleFilePublic response status:', response.status);
+      clearTimeout(timeoutId);
+      console.log('API toggleFilePublic response status:', response.status);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('API toggleFilePublic error:', errorText);
-      throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API toggleFilePublic error:', errorText);
+        throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('API toggleFilePublic result:', result);
+      return result.data;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timeout - operation may still be in progress');
+      }
+      throw error;
     }
-
-    const result = await response.json();
-    console.log('API toggleFilePublic result:', result);
-    return result.data;
   }
 
   getPublicFileUrl(fileId: string): string {
