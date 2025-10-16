@@ -390,6 +390,9 @@ PORT=9876
 - Input validation and sanitization
 - Error handling with user-friendly messages
 
+
+<img src="https://view-stats-backend.hermesbackend.xyz/image?repository=https://github.com/VMASPAD/WarpFS&color=7DDA58"/>
+
 ## Roadmap
 
 - [x] File upload via drag & drop
